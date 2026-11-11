@@ -1,0 +1,27 @@
+# Local reverse-engineering databases and analysis artifacts
+*.i64
+*.idb
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+*.pdb
+*.dSYM/
+*.dmp
+*.dump
+*.core
+*.bin
+*.exe
+*.dll
+*.sys
+*.so
+*.dylib
+*.o
+*.obj
+*.log
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+.env
