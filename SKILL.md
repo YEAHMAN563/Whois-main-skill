@@ -1,6 +1,6 @@
 ---
 name: reverse-master
-description: Expert native-binary reverse engineering and protection analysis for PE, ELF, and Mach-O, including Go, Rust, and .NET native quirks. Use for binary triage, packer/protector identification, unpacking, OEP and import recovery, deobfuscation, control-flow analysis, code virtualization and devirtualization, behavior analysis, and evidence-based security reporting. Trigger on words like binary, exe, dll, elf, packed, packer, protector, stub, unpack, dump, OEP, IAT, import table, obfuscated, virtualized, VM, devirtualize, anti-debug, anti-analysis, high entropy, or "what does this binary do". Produce a security.md report for protections, anti-analysis, anti-tamper, behavior, and risk findings. Discover available tools and select those relevant to the task; prefer IDA Pro when available after verifying its edition and capabilities. Source/C++ reconstruction is optional and must only be performed when explicitly requested. Use it whenever a compiled sample is being analyzed, even if the user does not name a technique.
+description: Expert native-binary reverse engineering and protection analysis for PE, ELF, and Mach-O, including Go, Rust, and .NET native quirks. Use for binary triage, packer/protector identification, unpacking, OEP and import recovery, deobfuscation, control-flow analysis, code virtualization and devirtualization, behavior analysis, and evidence-based security reporting. Trigger on words like binary, exe, dll, elf, packed, packer, protector, stub, unpack, dump, OEP, IAT, import table, obfuscated, virtualized, VM, devirtualize, anti-debug, anti-analysis, high entropy, or "what does this binary do". Produce a security.md report for protections, anti-analysis, anti-tamper, security-control bypass attempts, behavior, and risk findings. Discover available tools and select those relevant to the task; prefer IDA Pro when available after verifying its edition and capabilities. Source/C++ reconstruction is optional and must only be performed when explicitly requested. Use it whenever a compiled sample is being analyzed, even if the user does not name a technique.
 license: MIT
 ---
 
@@ -181,44 +181,67 @@ Keep compiler optimization, runtime scaffolding, and genuine obfuscation as sepa
 
 ---
 
-## 6. Anti-analysis: detect it, then get past it
+## 6. Anti-analysis and security-control bypass analysis
 
-Goal: never get fully stuck. Treat every check as an obstacle with several ways around it, tried in order.
+Goal: identify how a binary detects analysis, responds to instrumentation, and interacts with or attempts to circumvent security controls. Explain the mechanism from evidence, assess its impact, and validate conclusions safely. This section is for reverse engineering and defensive assessment—not for building stealth, defeating endpoint protection, evading monitoring, bypassing access controls, or disabling security products.
 
-### 6.1 Recognize that it is happening
-Common symptoms:
-- Exits, crashes, or behaves differently under a debugger or in a VM, but not on bare hardware.
-- Checks for debugger flags, debug-related structures, or debug ports.
-- Timing checks around short code runs, or checks of elapsed time between operations.
-- Probes for virtualization or analysis tooling (device names, drivers, processes, registry or file artifacts, hardware or firmware strings, CPU-specific instructions).
-- Integrity checks: checksums over its own code, detecting software breakpoints or patched bytes.
-- Exception-based tricks: deliberate faults whose handling differs when a debugger is attached.
-- Thread tricks: hidden threads, threads that watch the main one, TLS callbacks that run before the entry point.
-- Environment gating: runs only with a certain file name, path, locale, username, date, or network response.
+### 6.1 Anti-analysis technique inventory
 
-Locate the check first. Do not patch blind.
+Look for and classify:
 
-### 6.2 The unstuck ladder
-Work down the ladder. Move to the next rung as soon as the current one stops producing progress. **Time-box each rung** (state a budget, such as a fixed number of attempts or minutes) so no single rung eats the whole session.
+- **Anti-debugging:** debugger flags and structures, debug ports, timing differences, exception behavior, software-breakpoint checks, and debug-register inspection.
+- **Anti-VM / anti-sandbox:** device, driver, process, service, registry, firmware, CPU, and hardware-environment probes.
+- **Timing and environment gates:** clock measurements, sleep behavior, locale, username, path, date, hostname, and network-dependent conditions.
+- **Anti-instrumentation:** detection of hooks, trampolines, modified imports, injected modules, tracing artifacts, or altered API results.
+- **Anti-dump / anti-memory inspection:** checks for memory snapshots, altered page protections, unexpected mappings, or analysis artifacts.
+- **Control-flow disruption:** deliberate exceptions, watchdog threads, TLS callbacks, early initialization checks, and misleading branches.
+- **Integrity / anti-tamper:** code hashes, checksums, signature validation, self-inspection, and reactions to modified code or data.
 
-1. **Go around it statically.** Many goals do not need the sample to run. Keep reading code, recover strings, imports, and structure statically. Mark the guarded region and continue with everything else.
-2. **Find and understand the check.** Identify where it reads state, what it compares, and what it does on failure. Understanding the check usually reveals the cheapest way past it.
-3. **Neutralize the check on a copy.** Patch the branch or the compared value, or make the result constant, in a **copy** of the sample. Record the patch (address, original bytes, new bytes). If an integrity check then fires, find that check and apply the same approach to it. Work through checks in layers.
-4. **Fix the environment rather than the code.** Change what the sample sees instead of editing it: adjust the analysis environment's artifacts, names, hardware strings, clocks, locale, file paths, or user context so the environment-gating checks pass. This avoids tripping integrity checks.
-5. **Intercept at the boundary.** Hook or emulate the API or instruction that the check depends on, and return a normal-looking result. This leaves the sample's bytes untouched, which defeats most integrity checks.
-6. **Control the timing.** For timing checks, control or virtualize the clock sources the sample reads, or step so that elapsed time looks normal. Do not stall in single-step through timing-sensitive code.
-7. **Handle exception tricks.** Make the debugger pass the specific exceptions to the sample's own handler, or emulate the handler path. Confirm which exception the sample expects.
-8. **Switch tools.** If a debugger is detected, try an emulator, a different debugger, a hypervisor-level tracer, or a record-and-replay approach. If an emulator is detected, try a different one or a more faithful environment.
-9. **Run to a later point.** If early checks are the problem, find a way to start execution after them (set state manually, resume from a snapshot, or begin emulation past the check), then continue.
-10. **Take the memory, not the process.** Capture memory at a point just after the guarded work finishes, or just before it exits, and analyze the dump statically.
-11. **Skip the guarded region and say so.** If the region truly cannot be passed, record it as an explicit unresolved boundary: where it is, what you tried, and what would likely work with other resources. Then continue with the rest of the binary.
+For each finding, record the address or file offset, relevant instructions/data, inputs, comparison or decision, failure path, confidence, and evidence source. Distinguish a genuine anti-analysis check from ordinary diagnostics, licensing logic, crash handling, or compiler/runtime behavior.
 
-### 6.3 Rules while bypassing
-- Every bypass is recorded: what the check was, which rung worked, and the exact change.
-- Bypasses must not silently alter the behavior you are trying to analyze. After a bypass, confirm the sample still reaches the same logic and note any behavior that could differ from the unmodified run.
-- If a bypass changes behavior, say which conclusions depend on it.
-- A sample that refuses to run in your environment is itself information. Record the gating condition.
-- Never stop at "it detects my debugger." Always end the turn with either progress or a documented, time-boxed attempt list and the next best option.
+### 6.2 Analysis workflow
+
+1. Start with static analysis. Find the check, its data sources, its decision point, and the code paths reached on success and failure.
+2. Trace callers and downstream effects. Determine whether the check terminates execution, delays behavior, changes features, corrupts state, or selects another code path.
+3. Correlate related checks. Group checks that feed a shared state variable or common failure handler; do not assume each suspicious API call is a separate protection.
+4. Use bounded emulation or controlled observation only when static evidence is insufficient. Keep unknown samples isolated, snapshotted, and network-restricted.
+5. Compare observations across controlled conditions without exposing real credentials, personal data, production systems, or third-party services.
+6. Preserve the original sample and database. Any experiments must use disposable copies or a purpose-built test harness, with changes and results logged.
+
+### 6.3 Safe validation and disposition
+
+Use these outcomes instead of treating every check as something that must be defeated:
+
+- **Statically understood:** the check and its effect are supported by code/data-flow evidence.
+- **Observed in a lab:** behavior was reproduced in an isolated, authorized environment.
+- **Modeled:** the relevant branch or API boundary was represented in a harness or emulator without modifying a live security product.
+- **Not validated:** the evidence is insufficient or the test would require unsafe interaction with a real system.
+- **Unresolved:** the check is identified but its full effect remains unknown.
+
+When a check blocks further observation, continue with unaffected static paths, imports, strings, resources, and reachable functions. Clearly identify which conclusions remain dependent on unobserved behavior. Do not provide operational instructions or code for hiding from debuggers, defeating EDR/antivirus, evading sandboxes, disabling security monitoring, or bypassing real access-control and authentication systems.
+
+### 6.4 Security-control bypass analysis
+
+Identify and explain code that appears designed to circumvent or weaken a security control. Examples include:
+
+- Authentication or authorization checks that are skipped, incorrectly ordered, or inconsistently enforced.
+- Signature, certificate, or integrity validation that is absent, weakened, or conditionally ignored.
+- Privilege-boundary assumptions, insecure service permissions, or unsafe trust decisions.
+- Logging, auditing, monitoring, or policy-enforcement paths that are suppressed or avoided.
+- Update, loading, or plugin mechanisms that accept untrusted content or fail to verify provenance.
+- Exploit-mitigation settings or platform protections that are missing or incorrectly configured.
+
+For each suspected bypass, document the protected asset or control, the relevant code path, preconditions, observable effect, evidence, and confidence. Distinguish a confirmed bypass from a possible weakness or an intentional administrative feature. Where practical, validate the finding with a harmless test harness or a deliberately vulnerable sample in an isolated lab. Do not turn the finding into a reusable exploit, stealth technique, or procedure for bypassing protections on systems the analyst does not own or administer.
+
+### 6.5 Required deliverable
+
+Produce an anti-analysis and security-control matrix:
+
+| Finding | Location | Mechanism | Impact on analysis/security | Evidence | Status |
+| --- | --- | --- | --- | --- | --- |
+| Example: debugger-state check | RVA/offset | Reads a debug-related field | Changes execution path when observed | Instructions + xrefs | Statically understood |
+
+Include unresolved checks, false-positive considerations, and the limits of any lab validation. Never claim a check was bypassed or a control defeated unless that result was safely and directly demonstrated—and do not provide instructions that operationalize such a bypass.
 
 ---
 
@@ -481,7 +504,7 @@ Examples: ASLR/PIE, DEP/NX, stack canaries, control-flow integrity, RELRO, forti
 Packer or protector family, layers, virtualization, encryption, compression, with evidence.
 
 ## 5. Anti-analysis
-For each: type, location, how it works, how it was bypassed (rung from section 6), residual risk.
+For each: type, location, how it works, impact, evidence, validation status, and residual risk. Do not assume a bypass is required.
 - Anti-debug
 - Anti-VM and sandbox detection
 - Timing checks
@@ -513,8 +536,8 @@ Unsafe functions, missing bounds checks, format-string issues, insecure updates,
 ## 11. Indicators (defanged)
 Hosts, addresses, file paths, registry keys, mutex names, user agents, embedded configuration.
 
-## 12. Bypasses and patches applied
-Every change made to the analysis copy: address, original bytes, new bytes, reason, and which conclusions depend on it.
+## 12. Analysis experiments and modifications
+Record any changes made to a disposable analysis copy or test harness: target, purpose, original state, modified state, reason, validation, and which conclusions depend on the experiment. Do not include procedures or code for defeating security products or real-world access controls.
 
 ## 13. Unresolved and blocked
 What could not be determined, what was tried, and the next best option.
@@ -604,13 +627,13 @@ Spend effort on analysis, not on repeating or pasting.
 3. When something blocked me, did I climb the unstuck ladder and log each attempt?
 4. Can the recovery be rerun without redoing work by hand?
 5. Does the rebuilt image actually satisfy the loader, or is it labeled as an analysis dump?
-6. Did every bypass get recorded, and are conclusions that depend on one flagged?
+6. Are suspected security-control bypasses documented with evidence, impact, and confidence, and are conclusions that depend on unvalidated behavior flagged?
 7. Am I calling an intermediate artifact the final result?
 8. Did I take a tool inventory and use every tool, MCP server, and trusted open-source helper that fits?
 9. Is `security.md` written, evidence-based, and updated with every relevant protection, anti-analysis, anti-tamper, behavior, and risk finding?
 10. Are useful analysis notes saved to the available vault or plain-notes fallback?
 11. Did I keep output short, filtered, and referenced instead of pasted?
 
-**Triage. Identify. Deobfuscate. Devirtualize when evidenced. Analyze. Verify. Report. Reconstruct source only when requested. Never stall, never invent.**
+**Triage. Identify. Deobfuscate. Devirtualize when evidenced. Analyze anti-analysis and security-control behavior. Verify safely. Report. Reconstruct source only when requested. Never stall, never invent.**
 
 ---
