@@ -1,7 +1,26 @@
 ---
 name: reverse-master
-description: Expert native-binary reverse engineering and protection analysis for PE, ELF, and Mach-O, including Go, Rust, and .NET native quirks. Use for binary triage, packer/protector identification, unpacking, OEP and import recovery, deobfuscation, control-flow analysis, code virtualization and devirtualization, behavior analysis, and evidence-based security reporting. Trigger on words like binary, exe, dll, elf, packed, packer, protector, stub, unpack, dump, OEP, IAT, import table, obfuscated, virtualized, VM, devirtualize, anti-debug, anti-analysis, high entropy, or "what does this binary do". Produce a security.md report for protections, anti-analysis, anti-tamper, security-control bypass attempts, behavior, and risk findings. Discover available tools and select those relevant to the task; prefer IDA Pro when available after verifying its edition and capabilities. Source/C++ reconstruction is optional and must only be performed when explicitly requested. Use it whenever a compiled sample is being analyzed, even if the user does not name a technique.
+description: User-directed native-binary reverse engineering for PE, ELF, and Mach-O, including Go, Rust, and .NET. Use when the user asks for a specific operation such as triage, unpacking, OEP/import recovery, deobfuscation, devirtualization, anti-analysis review, security-control bypass assessment, behavior analysis, or reporting. Mentioned capabilities are not permission to execute them: perform only the exact feature(s) the user explicitly requests, and ask before adding any other stage, tool, modification, report, or output. Source reconstruction is opt-in and requires an explicit request.
 license: MIT
+---
+
+## 0. User-controlled feature selection (highest priority)
+
+**Every capability is opt-in. The user—not the skill—chooses which feature runs.** A file upload, a binary-related question, or permission to use one feature does not authorize the rest.
+
+- Execute only the operation(s) explicitly requested in the current user instruction or clearly authorized earlier for the same task.
+- Do not infer consent to unpack, dump, rebuild, patch, emulate, execute, deobfuscate, devirtualize, reconstruct source, run dynamic analysis, create reports, save notes, or use external tools from a general request to inspect or discuss a binary.
+- If the user asks a broad or ambiguous question and has not selected an operation, briefly explain the relevant available capabilities and ask which one they want. Do not begin a workflow while waiting.
+- If the user names one operation, do that operation only. Do not chain into the next stage just because it is customary or technically useful.
+- Before adding a stage, changing the sample, applying a patch, running code, using a debugger/emulator, creating additional artifacts, or sending data to an external service, ask for explicit approval unless that exact action was requested.
+- A request for analysis does not automatically authorize dynamic execution. A request to identify a protection does not authorize bypassing it. A request to inspect anti-analysis does not authorize modifying the sample to get around it.
+- Do not automatically create `security.md`, vault notes, scripts, reconstructed source, project files, or other deliverables. Create only the specific output the user requested.
+- Tool discovery and use are also task-scoped: use only tools needed for the requested feature. Ask before using an external service, MCP integration, or tool that changes files or state.
+- If a requested feature depends on another operation, explain the dependency and ask permission before performing that prerequisite.
+- Safety and authorization limits still apply. User approval does not authorize harmful deployment, stealth, credential theft, evasion of real security products, or unauthorized access.
+
+**Default response when no feature is specified:** ask one concise question, such as: “Which operation do you want: triage, unpacking, deobfuscation, devirtualization, anti-analysis review, security-control assessment, behavior analysis, or source reconstruction?” Do not run any of them until the user chooses.
+
 ---
 
 # reverse-master (binaries)
@@ -26,9 +45,9 @@ Only analyze software you are authorized to examine. Treat every sample as hosti
 
 ---
 
-## 2. Triage (always first, usually quick)
+## 2. Triage (only when explicitly requested)
 
-Collect before deciding anything:
+When the user explicitly requests triage, collect only the facts needed for that request:
 
 1. **Identity**: file type by magic bytes (not extension), architecture, bitness, endianness, compiler or language hints (Go, Rust, .NET, Delphi, C++), hash, size.
 2. **Structure**: sections or segments with names, sizes, flags; raw size vs virtual size; entry point and which section it lands in; overlay or appended data; TLS callbacks; resources; debug and exception data; code-signing data.
@@ -37,7 +56,7 @@ Collect before deciding anything:
 5. **Strings**: readable strings, or their near absence. Packer names are hints only.
 6. **Signatures**: use a signature or identification tool as a lead, never as proof.
 
-Then pick a path:
+Report the triage findings and stop. Do not automatically continue into another path. Ask the user which next operation, if any, they want.
 
 | Finding | Path |
 | --- | --- |
@@ -177,7 +196,7 @@ Keep compiler optimization, runtime scaffolding, and genuine obfuscation as sepa
 - Use independent disassembly, bounded emulation, or controlled execution only when static evidence is insufficient and the environment is isolated.
 - State coverage precisely: functions, blocks, branches, strings, and indirect targets resolved versus unresolved.
 
-**Default deliverables:** an obfuscation inventory, recovered CFG, important decoder/dispatcher explanations, normalized pseudocode or IR, address mapping, validation evidence, and unresolved items. Do not automatically produce source code or a compilable project.
+**If requested, deliver:** an obfuscation inventory, recovered CFG, important decoder/dispatcher explanations, normalized pseudocode or IR, address mapping, validation evidence, and unresolved items. Do not produce additional outputs the user did not request.
 
 ---
 
@@ -382,15 +401,15 @@ Before repeating an approach, check the log for a dead end already recorded.
 
 ## 13. Tool discovery and selection
 
-Use tools to improve accuracy and repeatability. Before starting, and again whenever stuck, discover available capabilities and select what fits the task.
+Use tools to improve accuracy and repeatability only when tool use is necessary for the explicitly requested feature. Ask before using any external service or any tool that changes files, executes the sample, or changes analysis state.
 
 ### 13.1 Inventory first
-1. Discover the tools available in this session: shell, file access, code execution, and relevant connected MCP servers (disassemblers, debuggers, decompilers, emulators, and note systems). Read descriptions and schemas before use.
+1. For the requested feature only, inspect the minimum relevant tools available in this session. Do not perform a broad tool inventory unless the user asks for it.
 2. Check what is installed locally when local execution is available.
 3. Select tools based on the binary format, analysis objective, evidence needed, and tool reliability. Do not call tools merely because they exist; avoid redundant or irrelevant calls.
 4. Record the useful tool inventory and versions in the notes so discovery is not repeated.
 
-If an MCP server exposes a disassembler or decompiler, prefer querying it over dumping raw output into the chat. If a notes or vault server exists, use it for section 17.
+If an MCP server exposes a disassembler or decompiler, it may be used only when the user has authorized that tool for the requested feature. Do not access a notes or vault server unless the user asks to save notes there.
 
 ### 13.2 IDA Pro workflow (preferred when available)
 
@@ -483,7 +502,7 @@ Include only material facts. Do not invent statistics. Keep it short for small t
 
 ## 16. security.md: security findings report
 
-For every binary analyzed, create `security.md` next to the other outputs (or in the vault, section 16). Fill it from evidence only. Mark every finding **observed**, **inferred**, or **verified**, with addresses, offsets, or file references so each can be rechecked. Defang indicators (for example, `hxxp://example[.]com`). Never invent a finding to fill a heading. Write "not found" or "not assessed" instead.
+Create `security.md` only when the user explicitly requests a security report. Do not create it for every binary analysis. Fill it from evidence only. Mark every finding **observed**, **inferred**, or **verified**, with addresses, offsets, or file references so each can be rechecked. Defang indicators (for example, `hxxp://example[.]com`). Never invent a finding to fill a heading. Write "not found" or "not assessed" instead.
 
 Template:
 
@@ -557,14 +576,14 @@ Rules:
 
 ---
 
-## 17. Obsidian vault: notes for understanding and token savings
+## 17. Obsidian vault: user-requested notes only
 
-Use an Obsidian vault as the working memory for the analysis. It helps the user understand the code (linked notes and a graph), and it helps the agent save tokens (read short notes instead of redoing or re-reading work).
+Use an Obsidian vault only when the user explicitly asks to save or maintain analysis notes there. Do not inspect for, create, or modify a vault by default.
 
 ### 17.1 Check, then recommend
-1. At the start of the work, look for a vault: a folder containing `.obsidian/`, an existing project notes folder, or an Obsidian-related MCP server or tool in the session.
-2. **If a vault or tool exists, use it.**
-3. **If none is found, tell the user once, briefly:** that analysis is much easier to follow with an Obsidian vault, and offer to walk them through setup. Do not nag. If they decline, keep plain Markdown notes in a folder with the same structure so nothing is lost.
+1. Only after the user asks to use an Obsidian vault, look for the specified vault or relevant connected tool.
+2. Use it only for the note operation the user requested.
+3. If none is found, explain the limitation and ask whether the user wants a plain Markdown alternative. Do not create that alternative without permission.
 
 ### 17.2 Setup guide to give the user (if they want it)
 1. Download Obsidian from the official site (obsidian.md) and install it for your system. It is free for personal use.
@@ -605,7 +624,7 @@ When the user wants to understand the binary, write notes that explain: what the
 
 ## 18. Save tokens
 
-Spend effort on analysis, not on repeating or pasting.
+Spend effort only on the feature the user selected. Do not add unsolicited analysis or artifacts.
 
 - **Read notes before re-reading raw data.** Start each step by checking the vault or notes for what is already known, and update them after.
 - **Filter at the source.** Use tools, scripts, `grep`, `head`, and structured queries to bring back only what is needed. Never paste whole disassembly listings, hex dumps, or long string lists into the conversation.
@@ -622,18 +641,18 @@ Spend effort on analysis, not on repeating or pasting.
 
 ## Final gate
 
-1. Did I triage before attacking?
+1. Did I perform only the feature(s) the user explicitly requested?
 2. Did I identify each wrapper from evidence and re-check every stage's output?
 3. When something blocked me, did I climb the unstuck ladder and log each attempt?
 4. Can the recovery be rerun without redoing work by hand?
 5. Does the rebuilt image actually satisfy the loader, or is it labeled as an analysis dump?
 6. Are suspected security-control bypasses documented with evidence, impact, and confidence, and are conclusions that depend on unvalidated behavior flagged?
 7. Am I calling an intermediate artifact the final result?
-8. Did I take a tool inventory and use every tool, MCP server, and trusted open-source helper that fits?
-9. Is `security.md` written, evidence-based, and updated with every relevant protection, anti-analysis, anti-tamper, behavior, and risk finding?
-10. Are useful analysis notes saved to the available vault or plain-notes fallback?
+8. Did I use only the tools necessary for the requested feature, with approval for consequential or external actions?
+9. If a security report was explicitly requested, is it evidence-based and complete for the agreed scope?
+10. Were notes saved only if the user explicitly requested them?
 11. Did I keep output short, filtered, and referenced instead of pasted?
 
-**Triage. Identify. Deobfuscate. Devirtualize when evidenced. Analyze anti-analysis and security-control behavior. Verify safely. Report. Reconstruct source only when requested. Never stall, never invent.**
+**User selects. Skill executes only the selected feature. Ask before expanding scope. Verify safely. Never assume consent, never invent.**
 
 ---
